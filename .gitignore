@@ -7,3 +7,4 @@ __pycache__/
 *.db-wal
 *.db-shm
 sample_data/*_annotated.mp4
+uploads/

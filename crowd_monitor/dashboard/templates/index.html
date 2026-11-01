@@ -19,13 +19,32 @@
   .hazard-banner { background: #d03b3b; color: #fff; font-weight: 700; padding: 8px 12px; border-radius: 6px; margin-bottom: 12px; }
   .hidden { display: none; }
   .sub { font-size: 12px; color: #888; }
+  .upload-row { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; margin: 8px 0 4px; }
+  .upload-row input[type="file"] { color: #eee; max-width: 220px; }
+  .upload-row button {
+    background: #2a78d6; color: #fff; border: none; border-radius: 4px;
+    padding: 6px 12px; font-size: 13px; cursor: pointer;
+  }
+  .upload-row button.secondary { background: #333; }
+  .upload-row button:disabled { opacity: 0.5; cursor: default; }
+  #upload-status { font-size: 12px; color: #999; margin-top: 4px; }
+  #watching-note { font-size: 12px; color: #999; margin: 0 0 10px; word-break: break-all; }
 </style>
 </head>
 <body>
   <h1>Railway Station — Crowd / Stampede Risk Monitor</h1>
   <div id="hazard-banner" class="hazard-banner hidden"></div>
+  <p id="watching-note">Watching: …</p>
   <div class="layout">
-    <div class="feed"><img src="/stream" alt="live annotated feed" /></div>
+    <div class="feed">
+      <img src="/stream" alt="live annotated feed" />
+      <form id="upload-form" class="upload-row">
+        <input type="file" id="video-file" name="file" accept="video/*" required />
+        <button type="submit" id="upload-btn">Upload &amp; check activity</button>
+        <button type="button" id="demo-btn" class="secondary">Use demo clip</button>
+      </form>
+      <div id="upload-status"></div>
+    </div>
     <div class="panel">
       <div>Current risk</div>
       <div id="level" class="level LOW">LOW</div>
@@ -49,6 +68,7 @@
 async function poll() {
   try {
     const status = await (await fetch('/status')).json();
+    document.getElementById('watching-note').textContent = 'Watching: ' + (status.watching || '…');
     const levelEl = document.getElementById('level');
     levelEl.textContent = status.level;
     levelEl.className = 'level ' + status.level;
@@ -95,6 +115,44 @@ async function poll() {
 }
 setInterval(poll, 1000);
 poll();
+
+const uploadForm = document.getElementById('upload-form');
+const uploadBtn = document.getElementById('upload-btn');
+const uploadStatus = document.getElementById('upload-status');
+const demoBtn = document.getElementById('demo-btn');
+const fileInput = document.getElementById('video-file');
+
+uploadForm.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (!fileInput.files.length) return;
+  const formData = new FormData();
+  formData.append('file', fileInput.files[0]);
+  uploadBtn.disabled = true;
+  uploadStatus.textContent = 'Uploading ' + fileInput.files[0].name + ' …';
+  try {
+    const res = await fetch('/upload', { method: 'POST', body: formData });
+    const data = await res.json();
+    if (data.ok) {
+      uploadStatus.textContent = 'Now watching: ' + data.filename + ' — the live pipeline has restarted on it.';
+    } else {
+      uploadStatus.textContent = 'Upload rejected: ' + data.error;
+    }
+  } catch (err) {
+    uploadStatus.textContent = 'Upload failed: ' + err;
+  } finally {
+    uploadBtn.disabled = false;
+  }
+});
+
+demoBtn.addEventListener('click', async () => {
+  uploadStatus.textContent = 'Switching back to the demo clip…';
+  try {
+    await fetch('/use-demo', { method: 'POST' });
+    uploadStatus.textContent = 'Now watching the demo clip.';
+  } catch (err) {
+    uploadStatus.textContent = 'Could not switch: ' + err;
+  }
+});
 </script>
 </body>
 </html>
