@@ -1,0 +1,7 @@
+# Optional: only needed for --backend yolo (crowd detection) or
+# --hazard-weights (fire/smoke detection). Pulls in PyTorch, which is large
+# (~2GB) and unnecessary for the default `motion` backend — kept out of
+# requirements.txt so the base deployment (e.g. on Railway) stays light.
+#
+#   pip install -r requirements.txt -r requirements-yolo.txt
+ultralytics>=8.2

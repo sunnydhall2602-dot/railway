@@ -119,6 +119,7 @@ SOURCE=sample_data/synthetic_stampede.mp4 \
 On a live camera:
 
 ```bash
+pip install -r requirements-yolo.txt  # only needed for --backend yolo
 python main.py --source rtsp://<camera-ip>/stream1 \
     --backend yolo --webhook http://control-room.local/alerts
 ```
@@ -141,6 +142,50 @@ SOURCE=rtsp://<camera-ip>/stream1 \
 # /history returns the logged alerts + hazard events; the page also
 # shows a hazard banner if HAZARD_WEIGHTS detects anything.
 ```
+
+## Deploying the dashboard as a real website
+
+`Procfile` and `railway.json` are set up for a one-click deploy on
+[Railway](https://railway.app):
+
+1. On railway.app, **New Project → Deploy from GitHub repo**, pick this repo.
+   Railway's Nixpacks builder auto-detects Python, installs
+   `requirements.txt`, and runs the `Procfile`'s `web:` command. No
+   Dockerfile needed.
+2. Under the service's **Variables**, set at minimum:
+   - `SOURCE` — defaults to `0` (webcam), which doesn't exist on a cloud
+     server. Set it to `sample_data/synthetic_stampede.mp4` to get a working
+     demo out of the box, or to your camera's URL (see the caveat below).
+   - `DETECTOR_BACKEND` — `motion` (default, no extra install) or `hog`.
+     `yolo` also needs `requirements-yolo.txt` installed, which Nixpacks
+     won't do unless you add it to the build — pip-install both files in a
+     custom build command if you need it.
+   - `LOOP=1` to keep replaying a video file forever (the default).
+   - `HISTORY_DB` / `HAZARD_WEIGHTS` if you want those features — see
+     the caveat on persistence below.
+3. Railway assigns a public URL automatically; open it and you'll see the
+   same dashboard described above (`/`, `/stream`, `/status`, `/alerts`,
+   `/history`).
+
+This works the same way on Render, Fly.io, or any host that runs a Procfile
+or a plain `uvicorn` command — Railway isn't required, it's just what's
+set up here (and matches this repo's name).
+
+**Two things that don't "just work" on a cloud PaaS, by the nature of the
+problem, not a bug in this code:**
+
+- **Reaching a real camera.** An RTSP feed from a CCTV camera at a station
+  is normally on a private LAN, not exposed to the public internet (for
+  good reason). A cloud-hosted dashboard can't reach `rtsp://192.168.x.x/...`
+  — that address means something different from Railway's network. For a
+  real deployment, either run this dashboard on an edge box *on the same
+  network as the camera* (the architecture covered earlier), or set up a
+  secure tunnel/VPN from that network to the cloud service. Don't expose
+  the camera's RTSP port to the public internet to work around this.
+- **`HISTORY_DB`'s SQLite file.** Most PaaS containers have ephemeral local
+  disk — it's wiped on every redeploy/restart. Attach a persistent volume
+  (Railway has a Volumes feature) and point `HISTORY_DB` at a path inside
+  it, or the history resets constantly.
 
 ## What the synthetic demo shows
 
