@@ -29,6 +29,21 @@ incident (not every frame), and never auto-triggers anything physical —
 it's deliberately a decision-support signal for a human, because a false
 stampede alarm can cause one.
 
+Two more signals ride alongside the risk score as situational-awareness
+overlays, not as inputs to it (a busy ticket counter can be legitimately
+"hot" without being a stampede risk, so mixing them into the core score
+would just add noise):
+
+| Signal | Module | What it's for |
+|---|---|---|
+| Dwell heatmap | `crowd_monitor/heatmap.py` | Where the crowd *lingers* over time (a chronic bottleneck — a queue, a narrow gate) vs. where it only ever passes through. Decays over time, so a one-off crowd doesn't leave a permanent "hot" scar. |
+| Social distancing | `crowd_monitor/social_distance.py` | Pairwise proximity violations, with a perspective-aware threshold (scales with detection height, since a fixed pixel distance means different real distances near vs. far from the camera). |
+
+Both are inspired by the equivalent features in
+[lewjiayi/Crowd-Analysis](https://github.com/lewjiayi/Crowd-Analysis), adapted
+to this pipeline's own detector/pipeline shape instead of its YOLOv4+DeepSORT
+stack.
+
 ## Pipeline
 
 ```
@@ -50,7 +65,10 @@ video source (file / webcam / RTSP)
 ```
 
 `crowd_monitor/pipeline.py` wires all of this together per frame and also
-draws the annotated overlay (boxes, density heat cells, risk label).
+draws the annotated overlay (dwell heatmap, density heat cells, boxes,
+social-distance violation lines, risk label). Set `show_heatmap=False` /
+`show_social_distance=False` on `CrowdMonitorPipeline` to turn either
+overlay off without disabling the underlying computation.
 
 ## Detector backends
 

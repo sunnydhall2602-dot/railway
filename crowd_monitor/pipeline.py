@@ -13,6 +13,8 @@ from .anomaly import RiskAssessment, TemporalAnomalyScorer
 from .density import DensityEstimator, DensityResult
 from .detector import Detection, PersonDetector
 from .flow import FlowAnalyzer, FlowResult
+from .heatmap import DwellHeatmap
+from .social_distance import SocialDistanceChecker, SocialDistanceResult
 
 _LEVEL_COLOR = {
     "LOW": (0, 200, 0),
@@ -29,6 +31,7 @@ class FrameResult:
     flow: FlowResult
     risk: RiskAssessment
     alert: Optional[Alert]
+    social_distance: SocialDistanceResult
     annotated_frame: np.ndarray
 
 
@@ -38,12 +41,16 @@ class CrowdMonitorPipeline:
     detector_backend: str = "motion"
     fps: float = 15.0
     webhook_url: Optional[str] = None
+    show_heatmap: bool = True
+    show_social_distance: bool = True
 
     def __post_init__(self) -> None:
         self.detector = PersonDetector(backend=self.detector_backend)
         self.density_estimator = DensityEstimator()
         self.flow_analyzer = FlowAnalyzer()
         self.anomaly_scorer = TemporalAnomalyScorer(fps=self.fps)
+        self.heatmap = DwellHeatmap()
+        self.social_distance_checker = SocialDistanceChecker()
 
         webhook = None
         if self.webhook_url:
@@ -58,8 +65,10 @@ class CrowdMonitorPipeline:
         flow = self.flow_analyzer.compute(frame)
         risk = self.anomaly_scorer.update(density, flow)
         alert = self.alert_manager.process(risk)
+        social_distance = self.social_distance_checker.check(detections)
+        self.heatmap.update(detections, frame.shape)
 
-        annotated = self._annotate(frame, detections, density, risk)
+        annotated = self._annotate(frame, detections, density, risk, social_distance)
 
         return FrameResult(
             detections=detections,
@@ -67,6 +76,7 @@ class CrowdMonitorPipeline:
             flow=flow,
             risk=risk,
             alert=alert,
+            social_distance=social_distance,
             annotated_frame=annotated,
         )
 
@@ -76,12 +86,13 @@ class CrowdMonitorPipeline:
         detections: list[Detection],
         density: DensityResult,
         risk: RiskAssessment,
+        social_distance: SocialDistanceResult,
     ) -> np.ndarray:
         out = frame.copy()
         color = _LEVEL_COLOR[risk.level]
 
-        for det in detections:
-            cv2.rectangle(out, (det.x, det.y), (det.x + det.w, det.y + det.h), (255, 180, 0), 1)
+        if self.show_heatmap:
+            out = self.heatmap.overlay(out)
 
         h, w = out.shape[:2]
         cell_h, cell_w = h / density.grid.shape[0], w / density.grid.shape[1]
@@ -94,10 +105,23 @@ class CrowdMonitorPipeline:
                     cv2.rectangle(overlay, (x0, y0), (x1, y1), (0, 0, 255), -1)
                     out = cv2.addWeighted(overlay, 0.15, out, 0.85, 0)
 
+        for det in detections:
+            cv2.rectangle(out, (det.x, det.y), (det.x + det.w, det.y + det.h), (255, 180, 0), 1)
+
+        if self.show_social_distance:
+            centroids = [det.centroid for det in detections]
+            for i, j in social_distance.violations:
+                p1 = tuple(int(v) for v in centroids[i])
+                p2 = tuple(int(v) for v in centroids[j])
+                cv2.line(out, p1, p2, (0, 0, 255), 1)
+            for idx in {p for pair in social_distance.violations for p in pair}:
+                cx, cy = map(int, centroids[idx])
+                cv2.circle(out, (cx, cy), 4, (0, 0, 255), -1)
+
         cv2.rectangle(out, (0, 0), (w, 36), (30, 30, 30), -1)
         label = (
-            f"count={density.count} risk={risk.level} score={risk.score:.0f} "
-            f"predicted({self.anomaly_scorer.predict_ahead_seconds:.0f}s)={risk.predicted_level}"
+            f"n={density.count} risk={risk.level}({risk.score:.0f}) "
+            f"pred={risk.predicted_level} sd={social_distance.violation_count}"
         )
-        cv2.putText(out, label, (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.55, color, 2)
+        cv2.putText(out, label, (8, 24), cv2.FONT_HERSHEY_SIMPLEX, 0.45, color, 1)
         return out
