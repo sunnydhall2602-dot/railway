@@ -23,6 +23,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from .anomaly import RiskAssessment
+from .hazard_detector import HazardDetection
 
 logger = logging.getLogger("crowd_monitor.alert")
 
@@ -53,10 +54,12 @@ class Alert:
 class AlertManager:
     camera_id: str = "cam-01"
     repeat_seconds: float = 20.0
+    hazard_repeat_seconds: float = 10.0
     webhook: Optional[Callable[[Alert], None]] = None
 
     _last_level: str = field(default="LOW", init=False)
     _last_notified_at: float = field(default=0.0, init=False)
+    _hazard_last_notified_at: float = field(default=0.0, init=False)
     history: list[Alert] = field(default_factory=list, init=False)
 
     def process(self, assessment: RiskAssessment) -> Optional[Alert]:
@@ -81,6 +84,34 @@ class AlertManager:
             timestamp=now,
         )
         self._last_notified_at = now
+        self.history.append(alert)
+        self._dispatch(alert)
+        return alert
+
+    def process_hazard(self, hazards: list[HazardDetection]) -> Optional[Alert]:
+        """Fire/smoke detections always escalate straight to CRITICAL,
+        independent of the crowd risk score — a confirmed fire doesn't wait
+        for the crowd to start moving. Re-notifies every `hazard_repeat_seconds`
+        while the hazard is still in frame, and resets as soon as it clears."""
+        if not hazards:
+            self._hazard_last_notified_at = 0.0
+            return None
+
+        now = time.time()
+        if (now - self._hazard_last_notified_at) < self.hazard_repeat_seconds:
+            return None
+        self._hazard_last_notified_at = now
+
+        labels = sorted({h.label for h in hazards})
+        top_confidence = max(h.confidence for h in hazards)
+        alert = Alert(
+            camera_id=self.camera_id,
+            level="CRITICAL",
+            score=100.0,
+            predicted_level="CRITICAL",
+            reasons=[f"{label} detected (confidence={top_confidence:.2f})" for label in labels],
+            timestamp=now,
+        )
         self.history.append(alert)
         self._dispatch(alert)
         return alert

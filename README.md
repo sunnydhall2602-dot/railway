@@ -44,6 +44,18 @@ Both are inspired by the equivalent features in
 to this pipeline's own detector/pipeline shape instead of its YOLOv4+DeepSORT
 stack.
 
+Two more pieces round out "monitoring", not just "scoring":
+
+| Piece | Module | What it's for |
+|---|---|---|
+| Hazard detection (fire/smoke) | `crowd_monitor/hazard_detector.py` | A second, independently-trained YOLO model that short-circuits straight to a CRITICAL alert — a fire doesn't wait for the crowd to start moving before it's an emergency. **Disabled by default** (no weights ship with this repo); point it at your own trained model with `--hazard-weights`. |
+| History log | `crowd_monitor/history.py` | A SQLite log of throttled frame stats, every alert, and every hazard event — for shift handover, incident review, or justifying a chronic-bottleneck redesign. Opt in with `--history-db`; without it, nothing is written to disk. |
+
+Both were suggested by the equivalent features in a reference CrowdGuard/
+CrowdSafe project (optional smoke/fight model hooks, SQLite logging) —
+adapted the same way: as opt-in additions that default to off/no-op rather
+than silently depending on a model this repo doesn't ship.
+
 ## Pipeline
 
 ```
@@ -64,9 +76,10 @@ video source (file / webcam / RTSP)
  AlertManager ──► console log / webhook, de-duplicated by escalation
 ```
 
-`crowd_monitor/pipeline.py` wires all of this together per frame and also
-draws the annotated overlay (dwell heatmap, density heat cells, boxes,
-social-distance violation lines, risk label). Set `show_heatmap=False` /
+`crowd_monitor/pipeline.py` wires all of this together per frame — plus the
+optional hazard detector and history log below — and also draws the
+annotated overlay (dwell heatmap, density heat cells, boxes, social-distance
+violation lines, hazard boxes, risk label). Set `show_heatmap=False` /
 `show_social_distance=False` on `CrowdMonitorPipeline` to turn either
 overlay off without disabling the underlying computation.
 
@@ -108,6 +121,25 @@ On a live camera:
 ```bash
 python main.py --source rtsp://<camera-ip>/stream1 \
     --backend yolo --webhook http://control-room.local/alerts
+```
+
+With history logging and hazard detection turned on (both opt-in):
+
+```bash
+python main.py --source rtsp://<camera-ip>/stream1 \
+    --history-db cam01_history.db \
+    --hazard-weights /path/to/your/fire-smoke-yolo.pt
+```
+
+Or via the dashboard:
+
+```bash
+SOURCE=rtsp://<camera-ip>/stream1 \
+    HISTORY_DB=cam01_history.db \
+    HAZARD_WEIGHTS=/path/to/your/fire-smoke-yolo.pt \
+    uvicorn crowd_monitor.dashboard.app:app --port 8000
+# /history returns the logged alerts + hazard events; the page also
+# shows a hazard banner if HAZARD_WEIGHTS detects anything.
 ```
 
 ## What the synthetic demo shows

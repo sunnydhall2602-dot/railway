@@ -2,4 +2,8 @@ __pycache__/
 *.pyc
 .pytest_cache/
 *.pt
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
 sample_data/*_annotated.mp4

@@ -41,6 +41,16 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--webhook", default=None, help="Optional URL to POST alerts to.")
     parser.add_argument("--display", action="store_true", help="Show annotated frames in a window.")
     parser.add_argument("--max-frames", type=int, default=None, help="Stop after N frames (for testing).")
+    parser.add_argument(
+        "--hazard-weights", default=None,
+        help="Path to a YOLO model trained on fire/smoke (or other hazard classes). "
+        "Omit to run without hazard detection.",
+    )
+    parser.add_argument(
+        "--history-db", default=None,
+        help="Path to a SQLite file to log throttled frame stats, alerts, and hazard events. "
+        "Omit to run without history logging.",
+    )
     return parser.parse_args()
 
 
@@ -60,6 +70,8 @@ def main() -> int:
         detector_backend=args.backend,
         fps=fps,
         webhook_url=args.webhook,
+        hazard_weights_path=args.hazard_weights,
+        history_db_path=args.history_db,
     )
 
     writer = None
