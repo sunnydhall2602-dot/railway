@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Railway Crowd Monitor</title>
+<style>
+  body { background: #111; color: #eee; font-family: system-ui, sans-serif; margin: 0; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 12px; }
+  .layout { display: flex; gap: 16px; flex-wrap: wrap; }
+  .feed img { width: 640px; max-width: 100%; border: 1px solid #333; display: block; }
+  .panel { background: #1b1b1b; border: 1px solid #333; border-radius: 6px; padding: 12px; min-width: 260px; }
+  .level { font-size: 28px; font-weight: 700; padding: 4px 0; }
+  .LOW { color: #4caf50; }
+  .MEDIUM { color: #ffc107; }
+  .HIGH { color: #ff9800; }
+  .CRITICAL { color: #f44336; }
+  .reasons { font-size: 13px; color: #bbb; margin-top: 8px; }
+  .alert-item { border-bottom: 1px solid #333; padding: 6px 0; font-size: 13px; }
+</style>
+</head>
+<body>
+  <h1>Railway Station — Crowd / Stampede Risk Monitor</h1>
+  <div class="layout">
+    <div class="feed"><img src="/stream" alt="live annotated feed" /></div>
+    <div class="panel">
+      <div>Current risk</div>
+      <div id="level" class="level LOW">LOW</div>
+      <div>Score: <span id="score">0</span> / 100</div>
+      <div>Predicted (next window): <span id="predicted">LOW</span></div>
+      <div>People detected: <span id="count">0</span></div>
+      <div class="reasons" id="reasons"></div>
+    </div>
+    <div class="panel" style="min-width: 320px; max-height: 480px; overflow-y: auto;">
+      <div>Alert log</div>
+      <div id="alerts"></div>
+    </div>
+  </div>
+
+<script>
+async function poll() {
+  try {
+    const status = await (await fetch('/status')).json();
+    const levelEl = document.getElementById('level');
+    levelEl.textContent = status.level;
+    levelEl.className = 'level ' + status.level;
+    document.getElementById('score').textContent = status.score;
+    document.getElementById('predicted').textContent = status.predicted_level;
+    document.getElementById('count').textContent = status.count;
+    document.getElementById('reasons').textContent = (status.reasons || []).join(' | ');
+
+    const alerts = await (await fetch('/alerts')).json();
+    document.getElementById('alerts').innerHTML = alerts.map(a =>
+      `<div class="alert-item"><b class="${a.level}">${a.level}</b> score=${a.score} ` +
+      `@ ${new Date(a.timestamp * 1000).toLocaleTimeString()}<br>${(a.reasons || []).join(', ')}</div>`
+    ).join('');
+  } catch (e) { /* ignore transient fetch errors */ }
+}
+setInterval(poll, 1000);
+poll();
+</script>
+</body>
+</html>

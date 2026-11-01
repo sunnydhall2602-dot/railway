@@ -1,0 +1,7 @@
+opencv-python-headless>=4.9,<5
+numpy>=1.26
+fastapi>=0.110
+uvicorn>=0.29
+requests>=2.31
+ultralytics>=8.2; python_version>="3.9"
+pytest>=8.0
